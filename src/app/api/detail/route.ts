@@ -31,12 +31,12 @@ export async function GET(request: NextRequest) {
       }
 
       const rootPath = openListConfig.RootPath || '/';
+      const folderPath = `${rootPath}${rootPath.endsWith('/') ? '' : '/'}${id}`;
 
       // 1. 读取 metainfo 获取元数据
       let metaInfo: any = null;
       try {
         const { getCachedMetaInfo, setCachedMetaInfo } = await import('@/lib/openlist-cache');
-        const { getTMDBImageUrl } = await import('@/lib/tmdb.search');
         const { db } = await import('@/lib/db');
 
         metaInfo = getCachedMetaInfo(rootPath);
@@ -49,50 +49,104 @@ export async function GET(request: NextRequest) {
           }
         }
       } catch (error) {
-        console.error('[Detail] 从数据库读取 metainfo 失败:', error);
+        // 忽略错误
       }
 
-      // 2. 调用 openlist detail API
-      const openlistResponse = await fetch(
-        `${request.headers.get('x-forwarded-proto') || 'http'}://${request.headers.get('host')}/api/openlist/detail?folder=${encodeURIComponent(id)}`,
-        {
-          headers: {
-            Cookie: request.headers.get('cookie') || '',
-          },
-        }
+      // 2. 直接调用 OpenList 客户端获取视频列表
+      const { OpenListClient } = await import('@/lib/openlist.client');
+      const { getCachedVideoInfo, setCachedVideoInfo } = await import('@/lib/openlist-cache');
+      const { parseVideoFileName } = await import('@/lib/video-parser');
+
+      const client = new OpenListClient(
+        openListConfig.URL,
+        openListConfig.Username,
+        openListConfig.Password
       );
 
-      if (!openlistResponse.ok) {
-        throw new Error('获取 OpenList 视频详情失败');
+      let videoInfo = getCachedVideoInfo(folderPath);
+
+      if (!videoInfo) {
+        try {
+          const videoinfoPath = `${folderPath}/videoinfo.json`;
+          const fileResponse = await client.getFile(videoinfoPath);
+
+          if (fileResponse.code === 200 && fileResponse.data.raw_url) {
+            const contentResponse = await fetch(fileResponse.data.raw_url);
+            const content = await contentResponse.text();
+            videoInfo = JSON.parse(content);
+            if (videoInfo) {
+              setCachedVideoInfo(folderPath, videoInfo);
+            }
+          }
+        } catch (error) {
+          // 忽略错误
+        }
       }
 
-      const openlistData = await openlistResponse.json();
+      const listResponse = await client.listDirectory(folderPath);
 
-      if (!openlistData.success) {
-        throw new Error(openlistData.error || '获取视频详情失败');
+      if (listResponse.code !== 200) {
+        throw new Error('OpenList 列表获取失败');
       }
+
+      const videoExtensions = ['.mp4', '.mkv', '.avi', '.m3u8', '.flv', '.ts', '.mov', '.wmv', '.webm', '.rmvb', '.rm', '.mpg', '.mpeg', '.3gp', '.f4v', '.m4v', '.vob'];
+      const videoFiles = listResponse.data.content.filter((item) => {
+        if (item.is_dir || item.name.startsWith('.') || item.name.endsWith('.json')) return false;
+        return videoExtensions.some(ext => item.name.toLowerCase().endsWith(ext));
+      });
+
+      if (!videoInfo) {
+        videoInfo = { episodes: {}, last_updated: Date.now() };
+        videoFiles.sort((a, b) => a.name.localeCompare(b.name));
+        for (let i = 0; i < videoFiles.length; i++) {
+          const file = videoFiles[i];
+          const parsed = parseVideoFileName(file.name);
+          videoInfo.episodes[file.name] = {
+            episode: parsed.episode || (i + 1),
+            season: parsed.season,
+            title: parsed.title,
+            parsed_from: 'filename',
+          };
+        }
+        setCachedVideoInfo(folderPath, videoInfo);
+      }
+
+      const episodes = videoFiles
+        .map((file, index) => {
+          const parsed = parseVideoFileName(file.name);
+          let episodeInfo;
+          if (parsed.episode) {
+            episodeInfo = { episode: parsed.episode, season: parsed.season, title: parsed.title, parsed_from: 'filename' };
+          } else {
+            episodeInfo = videoInfo!.episodes[file.name] || { episode: index + 1, season: undefined, title: undefined, parsed_from: 'filename' };
+          }
+          let displayTitle = episodeInfo.title;
+          if (!displayTitle && episodeInfo.episode) {
+            displayTitle = `第${episodeInfo.episode}集`;
+          }
+          if (!displayTitle) {
+            displayTitle = file.name;
+          }
+          return { fileName: file.name, episode: episodeInfo.episode || 0, season: episodeInfo.season, title: displayTitle };
+        })
+        .sort((a, b) => a.episode !== b.episode ? a.episode - b.episode : a.fileName.localeCompare(b.fileName));
 
       // 3. 从 metainfo 中获取元数据
       const folderMeta = metaInfo?.folders?.[id];
       const { getTMDBImageUrl } = await import('@/lib/tmdb.search');
 
-      // 转换为标准格式（使用懒加载 URL）
       const result = {
         source: 'openlist',
         source_name: '私人影库',
-        id: openlistData.folder,
-        title: folderMeta?.title || openlistData.folder,
+        id: id,
+        title: folderMeta?.title || id,
         poster: folderMeta?.poster_path ? getTMDBImageUrl(folderMeta.poster_path) : '',
         year: folderMeta?.release_date ? folderMeta.release_date.split('-')[0] : '',
         douban_id: 0,
         desc: folderMeta?.overview || '',
-        episodes: openlistData.episodes.map((ep: any) =>
-          `/api/openlist/play?folder=${encodeURIComponent(openlistData.folder)}&fileName=${encodeURIComponent(ep.fileName)}`
-        ),
-        episodes_titles: openlistData.episodes.map((ep: any) => ep.title || `第${ep.episode}集`),
+        episodes: episodes.map((ep) => `/api/openlist/play?folder=${encodeURIComponent(id)}&fileName=${encodeURIComponent(ep.fileName)}`),
+        episodes_titles: episodes.map((ep) => ep.title),
       };
-
-      console.log('[Detail] result.episodes_titles:', result.episodes_titles);
 
       return NextResponse.json(result);
     } catch (error) {
