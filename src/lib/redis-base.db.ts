@@ -703,6 +703,9 @@ export abstract class BaseRedisStorage implements IStorage {
       value: userName,
     }));
 
+    // 清除用户信息缓存
+    userInfoCache?.delete(userName);
+
     // 如果创建的是站长用户，清除站长存在状态缓存
     if (userName === process.env.USERNAME) {
       const { ownerExistenceCache } = await import('./user-cache');
@@ -739,28 +742,59 @@ export abstract class BaseRedisStorage implements IStorage {
     email?: string;
     emailNotifications?: boolean;
   } | null> {
-    const userInfo = await this.withRetry(() =>
+    // 先从缓存获取
+    const cached = userInfoCache?.get(userName);
+    if (cached) {
+      return cached;
+    }
+
+    const userInfoRaw = await this.withRetry(() =>
       this.adapter.hGetAll(this.userInfoKey(userName))
     );
 
-    if (!userInfo || Object.keys(userInfo).length === 0) {
+    if (!userInfoRaw || Object.keys(userInfoRaw).length === 0) {
+      // 如果数据库中没有，检查是否是环境变量中的站长
+      if (userName === process.env.USERNAME) {
+        // 站长即使数据库没有数据，也返回默认信息
+        const ownerInfo = {
+          role: 'owner' as const,
+          banned: false,
+          created_at: 0,
+          playrecord_migrated: false,
+          favorite_migrated: false,
+          skip_migrated: false,
+        };
+        // 缓存站长信息
+        userInfoCache?.set(userName, ownerInfo);
+        return ownerInfo;
+      }
       return null;
     }
 
-    return {
-      role: (userInfo.role as 'owner' | 'admin' | 'user') || 'user',
-      banned: userInfo.banned === 'true',
-      tags: userInfo.tags ? JSON.parse(userInfo.tags) : undefined,
-      oidcSub: userInfo.oidcSub,
-      enabledApis: userInfo.enabledApis ? JSON.parse(userInfo.enabledApis) : undefined,
-      created_at: parseInt(userInfo.created_at || '0', 10),
-      playrecord_migrated: userInfo.playrecord_migrated === 'true',
-      favorite_migrated: userInfo.favorite_migrated === 'true',
-      skip_migrated: userInfo.skip_migrated === 'true',
-      last_movie_request_time: userInfo.last_movie_request_time ? parseInt(userInfo.last_movie_request_time, 10) : undefined,
-      email: userInfo.email,
-      emailNotifications: userInfo.emailNotifications === 'true',
+    const userInfo = {
+      role: (userInfoRaw.role as 'owner' | 'admin' | 'user') || 'user',
+      banned: userInfoRaw.banned === 'true',
+      tags: userInfoRaw.tags ? JSON.parse(userInfoRaw.tags) : undefined,
+      oidcSub: userInfoRaw.oidcSub,
+      enabledApis: userInfoRaw.enabledApis ? JSON.parse(userInfoRaw.enabledApis) : undefined,
+      created_at: parseInt(userInfoRaw.created_at || '0', 10),
+      playrecord_migrated: userInfoRaw.playrecord_migrated === 'true',
+      favorite_migrated: userInfoRaw.favorite_migrated === 'true',
+      skip_migrated: userInfoRaw.skip_migrated === 'true',
+      last_movie_request_time: userInfoRaw.last_movie_request_time ? parseInt(userInfoRaw.last_movie_request_time, 10) : undefined,
+      email: userInfoRaw.email,
+      emailNotifications: userInfoRaw.emailNotifications === 'true',
     };
+
+    // 如果是站长，强制将 role 设置为 owner
+    if (userName === process.env.USERNAME) {
+      userInfo.role = 'owner';
+    }
+
+    // 写入缓存
+    userInfoCache?.set(userName, userInfo);
+
+    return userInfo;
   }
 
   // 更新用户信息（新版本）
@@ -816,6 +850,9 @@ export abstract class BaseRedisStorage implements IStorage {
     if (Object.keys(userInfo).length > 0) {
       await this.withRetry(() => this.adapter.hSet(this.userInfoKey(userName), userInfo));
     }
+
+    // 清除缓存
+    userInfoCache?.delete(userName);
   }
 
   // 修改用户密码（新版本）
@@ -824,6 +861,9 @@ export abstract class BaseRedisStorage implements IStorage {
     await this.withRetry(() =>
       this.adapter.hSet(this.userInfoKey(userName), 'password', hashedPassword)
     );
+
+    // 清除缓存
+    userInfoCache?.delete(userName);
   }
 
   // 检查用户是否存在（新版本）
@@ -969,6 +1009,9 @@ export abstract class BaseRedisStorage implements IStorage {
 
     // 删除用户的其他数据（播放记录、收藏等）
     await this.deleteUser(userName);
+
+    // 清除缓存
+    userInfoCache?.delete(userName);
   }
 
   // ---------- 搜索历史 ----------

@@ -17,6 +17,7 @@ import {
 } from './types';
 import { AdminConfig } from './admin.types';
 import { DatabaseAdapter } from './d1-adapter';
+import { userInfoCache } from './user-cache';
 
 /**
  * Cloudflare D1 存储实现
@@ -178,6 +179,9 @@ export class D1Storage implements IStorage {
         .prepare('UPDATE users SET playrecord_migrated = 1 WHERE username = ?')
         .bind(userName)
         .run();
+
+      // 清除缓存
+      userInfoCache?.delete(userName);
     } catch (err) {
       console.error('D1Storage.migratePlayRecords error:', err);
     }
@@ -283,6 +287,9 @@ export class D1Storage implements IStorage {
         .prepare('UPDATE users SET favorite_migrated = 1 WHERE username = ?')
         .bind(userName)
         .run();
+
+      // 清除缓存
+      userInfoCache?.delete(userName);
     } catch (err) {
       console.error('D1Storage.migrateFavorites error:', err);
     }
@@ -533,6 +540,12 @@ export class D1Storage implements IStorage {
 
   async getUserInfoV2(userName: string): Promise<any> {
     try {
+      // 先从缓存获取
+      const cached = userInfoCache?.get(userName);
+      if (cached) {
+        return cached;
+      }
+
       // 先尝试从数据库获取用户信息
       const user = await this.db
         .prepare('SELECT * FROM users WHERE username = ?')
@@ -540,7 +553,7 @@ export class D1Storage implements IStorage {
         .first();
 
       if (user) {
-        return {
+        const userInfo = {
           role: user.role as 'owner' | 'admin' | 'user',
           banned: user.banned === 1,
           tags: user.tags ? JSON.parse(user.tags as string) : undefined,
@@ -554,18 +567,32 @@ export class D1Storage implements IStorage {
           email: user.email as string | undefined,
           emailNotifications: user.email_notifications === 1,
         };
+
+        // 如果是站长，强制将 role 设置为 owner
+        if (userName === process.env.USERNAME) {
+          userInfo.role = 'owner';
+        }
+
+        // 写入缓存
+        userInfoCache?.set(userName, userInfo);
+
+        return userInfo;
       }
 
       // 如果数据库中没有，检查是否是环境变量中的站长
       if (userName === process.env.USERNAME) {
-        return {
-          role: 'owner',
+        // 站长即使数据库没有数据，也返回默认信息
+        const ownerInfo = {
+          role: 'owner' as const,
           banned: false,
           created_at: 0,
-          playrecord_migrated: true,
-          favorite_migrated: true,
-          skip_migrated: true,
+          playrecord_migrated: false,
+          favorite_migrated: false,
+          skip_migrated: false,
         };
+        // 缓存站长信息
+        userInfoCache?.set(userName, ownerInfo);
+        return ownerInfo;
       }
 
       return null;
@@ -605,6 +632,9 @@ export class D1Storage implements IStorage {
           Date.now()
         )
         .run();
+
+      // 清除缓存
+      userInfoCache?.delete(userName);
     } catch (err) {
       console.error('D1Storage.createUserV2 error:', err);
       throw err;
@@ -774,6 +804,9 @@ export class D1Storage implements IStorage {
         .prepare(`UPDATE users SET ${fields.join(', ')} WHERE username = ?`)
         .bind(...values)
         .run();
+
+      // 清除缓存
+      userInfoCache?.delete(userName);
     } catch (err) {
       console.error('D1Storage.updateUserInfoV2 error:', err);
       throw err;
@@ -788,6 +821,9 @@ export class D1Storage implements IStorage {
         .prepare('UPDATE users SET password_hash = ? WHERE username = ?')
         .bind(passwordHash, userName)
         .run();
+
+      // 清除缓存
+      userInfoCache?.delete(userName);
     } catch (err) {
       console.error('D1Storage.changePasswordV2 error:', err);
       throw err;
@@ -829,6 +865,9 @@ export class D1Storage implements IStorage {
         .prepare('DELETE FROM users WHERE username = ?')
         .bind(userName)
         .run();
+
+      // 清除缓存
+      userInfoCache?.delete(userName);
     } catch (err) {
       console.error('D1Storage.deleteUserV2 error:', err);
       throw err;
@@ -941,6 +980,9 @@ export class D1Storage implements IStorage {
         .prepare('UPDATE users SET email = ? WHERE username = ?')
         .bind(email, userName)
         .run();
+
+      // 清除缓存
+      userInfoCache?.delete(userName);
     } catch (err) {
       console.error('D1Storage.setUserEmail error:', err);
       throw err;
@@ -967,6 +1009,9 @@ export class D1Storage implements IStorage {
         .prepare('UPDATE users SET email_notifications = ? WHERE username = ?')
         .bind(enabled ? 1 : 0, userName)
         .run();
+
+      // 清除缓存
+      userInfoCache?.delete(userName);
     } catch (err) {
       console.error('D1Storage.setEmailNotificationPreference error:', err);
       throw err;
@@ -1136,6 +1181,9 @@ export class D1Storage implements IStorage {
         .prepare('UPDATE users SET skip_migrated = 1 WHERE username = ?')
         .bind(userName)
         .run();
+
+      // 清除缓存
+      userInfoCache?.delete(userName);
     } catch (err) {
       console.error('D1Storage.migrateSkipConfigs error:', err);
     }
