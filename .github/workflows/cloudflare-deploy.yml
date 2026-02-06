@@ -52,6 +52,8 @@ jobs:
           echo "NEXT_PUBLIC_ENABLE_SOURCE_SEARCH=${{ secrets.NEXT_PUBLIC_ENABLE_SOURCE_SEARCH }}" >> $GITHUB_ENV
           echo "USERNAME=${{ secrets.USERNAME }}" >> $GITHUB_ENV
           echo "PASSWORD=${{ secrets.PASSWORD }}" >> $GITHUB_ENV
+          echo "ENABLE_TVBOX_SUBSCRIBE=${{ secrets.ENABLE_TVBOX_SUBSCRIBE }}" >> $GITHUB_ENV
+          echo "TVBOX_SUBSCRIBE_TOKEN=${{ secrets.TVBOX_SUBSCRIBE_TOKEN }}" >> $GITHUB_ENV
           echo "UPSTASH_URL=${{ secrets.UPSTASH_URL }}" >> $GITHUB_ENV
           echo "UPSTASH_TOKEN=${{ secrets.UPSTASH_TOKEN }}" >> $GITHUB_ENV
           echo "TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}" >> $GITHUB_ENV
@@ -104,6 +106,8 @@ jobs:
           append_var "NEXT_PUBLIC_ENABLE_SOURCE_SEARCH" "${{ secrets.NEXT_PUBLIC_ENABLE_SOURCE_SEARCH }}"
           append_var "USERNAME" "${{ secrets.USERNAME }}"
           append_var "PASSWORD" "${{ secrets.PASSWORD }}"
+          append_var "ENABLE_TVBOX_SUBSCRIBE" "${{ secrets.ENABLE_TVBOX_SUBSCRIBE }}"
+          append_var "TVBOX_SUBSCRIBE_TOKEN" "${{ secrets.TVBOX_SUBSCRIBE_TOKEN }}"
           append_var "UPSTASH_URL" "${{ secrets.UPSTASH_URL }}"
           append_var "UPSTASH_TOKEN" "${{ secrets.UPSTASH_TOKEN }}"
           append_var "TMDB_API_KEY" "${{ secrets.TMDB_API_KEY }}"

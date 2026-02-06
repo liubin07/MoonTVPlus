@@ -59,7 +59,8 @@ export class D1Storage implements IStorage {
   }
 
   async setPlayRecord(userName: string, key: string, record: PlayRecord): Promise<void> {
-    try {
+    return;
+    /*try {
       await this.db
         .prepare(`
           INSERT INTO play_records (
@@ -98,7 +99,7 @@ export class D1Storage implements IStorage {
     } catch (err) {
       console.error('D1Storage.setPlayRecord error:', err);
       throw err;
-    }
+    }*/
   }
 
   async getAllPlayRecords(userName: string): Promise<{ [key: string]: PlayRecord }> {
@@ -1502,7 +1503,7 @@ export class D1Storage implements IStorage {
  * key 格式：user_tokens:{username}:{tokenId}
  */
 class RedisHashAdapter {
-  constructor(private db: DatabaseAdapter) {}
+  constructor(private db: DatabaseAdapter) { }
 
   /**
    * 设置 Hash 字段
