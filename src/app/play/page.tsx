@@ -6805,7 +6805,7 @@ function PlayPageClient() {
 
     // 调用异步初始化函数
     initPlayer();
-  }, [videoUrl, loading, blockAdEnabled, currentEpisodeIndex]);
+  }, [videoUrl, loading, blockAdEnabled]);
 
   // 当组件卸载时清理定时器、Wake Lock 和播放器资源
   useEffect(() => {
