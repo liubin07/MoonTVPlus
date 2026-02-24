@@ -67,9 +67,9 @@ export class D1Storage implements IStorage {
           INSERT INTO play_records (
             username, key, title, source_name, cover, year,
             episode_index, total_episodes, play_time, total_time,
-            save_time, search_title
+            save_time, search_title, new_episodes
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(username, key) DO UPDATE SET
             title = excluded.title,
             source_name = excluded.source_name,
@@ -80,7 +80,8 @@ export class D1Storage implements IStorage {
             play_time = excluded.play_time,
             total_time = excluded.total_time,
             save_time = excluded.save_time,
-            search_title = excluded.search_title
+            search_title = excluded.search_title,
+            new_episodes = excluded.new_episodes
         `)
         .bind(
           userName,
@@ -94,7 +95,8 @@ export class D1Storage implements IStorage {
           record.play_time,
           record.total_time,
           record.save_time,
-          record.search_title || ''
+          record.search_title || '',
+          record.new_episodes || null
         )
         .run();
     } catch (err) {
@@ -728,6 +730,7 @@ export class D1Storage implements IStorage {
       total_time: row.total_time,
       save_time: row.save_time,
       search_title: row.search_title || '',
+      new_episodes: row.new_episodes || undefined,
     };
   }
 
