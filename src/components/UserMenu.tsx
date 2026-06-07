@@ -995,13 +995,12 @@ export const UserMenu: React.FC = () => {
     if (!enabled) {
       setPushNotificationsBusy(true);
       try {
-        let endpoint: string | undefined;
         const registration =
           'serviceWorker' in navigator
             ? await navigator.serviceWorker.getRegistration()
             : undefined;
         const subscription = await registration?.pushManager.getSubscription();
-        endpoint = subscription?.endpoint;
+        const endpoint = subscription?.endpoint;
         await subscription?.unsubscribe();
         await fetch('/api/notifications/push', {
           method: 'DELETE',
@@ -5187,6 +5186,11 @@ export const UserMenu: React.FC = () => {
         createPortal(
           <NotificationPanel
             isOpen={isNotificationPanelOpen}
+            onOpenNotificationSettings={() => {
+              setIsNotificationPanelOpen(false);
+              setIsEmailSettingsOpen(true);
+              void loadEmailSettings();
+            }}
             onClose={() => {
               setIsNotificationPanelOpen(false);
               // 不需要在这里刷新，NotificationPanel 内部会触发事件
